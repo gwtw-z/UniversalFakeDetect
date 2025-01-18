@@ -145,76 +145,177 @@ def get_list(path, must_contain=''):
     return image_list
 
 
-class RealFakeDataset(Dataset):
-    def __init__(self, real_path,
-                 fake_path,
-                 data_mode,
-                 max_sample,
-                 arch,
-                 jpeg_quality=None,
-                 gaussian_sigma=None):
+# class RealFakeDataset(Dataset):
+#     def __init__(self, real_path,
+#                  fake_path,
+#                  data_mode,
+#                  max_sample,
+#                  arch,
+#                  jpeg_quality=None,
+#                  gaussian_sigma=None):
+#
+#         assert data_mode in ["wang2020", "ours"]
+#         self.jpeg_quality = jpeg_quality
+#         self.gaussian_sigma = gaussian_sigma
+#
+#         # = = = = = = data path = = = = = = = = = #
+#         if type(real_path) == str and type(fake_path) == str:
+#             real_list, fake_list = self.read_path(real_path, fake_path, data_mode, max_sample)
+#         else:
+#             real_list = []
+#             fake_list = []
+#             for real_p, fake_p in zip(real_path, fake_path):
+#                 real_l, fake_l = self.read_path(real_p, fake_p, data_mode, max_sample)
+#                 real_list += real_l
+#                 fake_list += fake_l
+#
+#         self.total_list = real_list + fake_list
+#
+#         # = = = = = =  label = = = = = = = = = #
+#
+#         self.labels_dict = {}
+#         for i in real_list:
+#             self.labels_dict[i] = 0
+#         for i in fake_list:
+#             self.labels_dict[i] = 1
+#
+#         stat_from = "imagenet" if arch.lower().startswith("imagenet") else "clip"
+#         self.transform = transforms.Compose([
+#             transforms.CenterCrop(224),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean=MEAN[stat_from], std=STD[stat_from]),
+#         ])
+#
+#     def read_path(self, real_path, fake_path, data_mode, max_sample):
+#
+#         if data_mode == 'wang2020':
+#             real_list = get_list(real_path, must_contain='0_real')
+#             fake_list = get_list(fake_path, must_contain='1_fake')
+#         else:
+#             real_list = get_list(real_path)
+#             fake_list = get_list(fake_path)
+#
+#         if max_sample is not None:
+#             if (max_sample > len(real_list)) or (max_sample > len(fake_list)):
+#                 max_sample = 100
+#                 print("not enough images, max_sample falling to 100")
+#             random.shuffle(real_list)
+#             random.shuffle(fake_list)
+#             real_list = real_list[0:max_sample]
+#             fake_list = fake_list[0:max_sample]
+#
+#         assert len(real_list) == len(fake_list)
+#
+#         return real_list, fake_list
+#
+#     def __len__(self):
+#         return len(self.total_list)
+#
+#     def __getitem__(self, idx):
+#
+#         img_path = self.total_list[idx]
+#
+#         label = self.labels_dict[img_path]
+#         img = Image.open(img_path).convert("RGB")
+#
+#         if self.gaussian_sigma is not None:
+#             img = gaussian_blur(img, self.gaussian_sigma)
+#         if self.jpeg_quality is not None:
+#             img = png2jpg(img, self.jpeg_quality)
+#
+#         img = self.transform(img)
+#         return img, label
 
+
+#
+# if __name__ == '__main__':
+#
+#     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+#     parser.add_argument('--real_path', type=str, default=None, help='dir name or a pickle')
+#     parser.add_argument('--fake_path', type=str, default=None, help='dir name or a pickle')
+#     parser.add_argument('--data_mode', type=str, default=None, help='wang2020 or ours')
+#     parser.add_argument('--key', type=str, default='save', help='save the result')
+#     parser.add_argument('--max_sample', type=int, default=1000,
+#                         help='only check this number of images for both fake/real')
+#
+#     parser.add_argument('--arch', type=str, default='res50')
+#     parser.add_argument('--ckpt', type=str, default='./pretrained_weights/fc_weights.pth')
+#
+#     parser.add_argument('--result_folder', type=str, default='result', help='')
+#     parser.add_argument('--batch_size', type=int, default=128)
+#
+#     parser.add_argument('--jpeg_quality', type=int, default=None,
+#                         help="100, 90, 80, ... 30. Used to test robustness of our model. Not apply if None")
+#     parser.add_argument('--gaussian_sigma', type=int, default=None,
+#                         help="0,1,2,3,4.     Used to test robustness of our model. Not apply if None")
+#
+#     opt = parser.parse_args()
+#
+#     if os.path.exists(opt.result_folder):
+#         shutil.rmtree(opt.result_folder)
+#     os.makedirs(opt.result_folder)
+#
+#     model = get_model(opt.arch)
+#     state_dict = torch.load(opt.ckpt, map_location='cpu')
+#     model.fc.load_state_dict(state_dict)
+#     print("Model loaded..")
+#     model.eval()
+#     model.cuda()
+#
+#     if (opt.real_path == None) or (opt.fake_path == None) or (opt.data_mode == None):
+#         dataset_paths = DATASET_PATHS
+#     else:
+#         dataset_paths = [dict(real_path=opt.real_path, fake_path=opt.fake_path, data_mode=opt.data_mode, key=opt.key)]
+#
+#     for dataset_path in (dataset_paths):
+#         set_seed()
+#
+#         dataset = RealFakeDataset(dataset_path['real_path'],
+#                                   dataset_path['fake_path'],
+#                                   dataset_path['data_mode'],
+#                                   opt.max_sample,
+#                                   opt.arch,
+#                                   jpeg_quality=opt.jpeg_quality,
+#                                   gaussian_sigma=opt.gaussian_sigma,
+#                                   )
+#
+#         loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=4)
+#         ap, r_acc0, f_acc0, acc0, r_acc1, f_acc1, acc1, best_thres = validate(model, loader, find_thres=True)
+#
+#         with open(os.path.join(opt.result_folder, 'ap.txt'), 'a') as f:
+#             f.write(dataset_path['key'] + ': ' + str(round(ap * 100, 2)) + '\n')
+#
+#         with open(os.path.join(opt.result_folder, 'acc0.txt'), 'a') as f:
+#             f.write(dataset_path['key'] + ': ' + str(round(r_acc0 * 100, 2)) + '  ' + str(
+#                 round(f_acc0 * 100, 2)) + '  ' + str(round(acc0 * 100, 2)) + '\n')
+
+class RealFakeDataset(Dataset):
+    def __init__(self, real_list, fake_list, data_mode, jpeg_quality=None, gaussian_sigma=None):
         assert data_mode in ["wang2020", "ours"]
         self.jpeg_quality = jpeg_quality
         self.gaussian_sigma = gaussian_sigma
 
-        # = = = = = = data path = = = = = = = = = # 
-        if type(real_path) == str and type(fake_path) == str:
-            real_list, fake_list = self.read_path(real_path, fake_path, data_mode, max_sample)
-        else:
-            real_list = []
-            fake_list = []
-            for real_p, fake_p in zip(real_path, fake_path):
-                real_l, fake_l = self.read_path(real_p, fake_p, data_mode, max_sample)
-                real_list += real_l
-                fake_list += fake_l
-
-        self.total_list = real_list + fake_list
-
         # = = = = = =  label = = = = = = = = = #
-
         self.labels_dict = {}
         for i in real_list:
-            self.labels_dict[i] = 0
+            self.labels_dict[i] = 0  # label 0 for real images
         for i in fake_list:
-            self.labels_dict[i] = 1
+            self.labels_dict[i] = 1  # label 1 for fake images
 
-        stat_from = "imagenet" if arch.lower().startswith("imagenet") else "clip"
+        stat_from = "imagenet" if "imagenet" in data_mode else "clip"
         self.transform = transforms.Compose([
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=MEAN[stat_from], std=STD[stat_from]),
         ])
 
-    def read_path(self, real_path, fake_path, data_mode, max_sample):
-
-        if data_mode == 'wang2020':
-            real_list = get_list(real_path, must_contain='0_real')
-            fake_list = get_list(fake_path, must_contain='1_fake')
-        else:
-            real_list = get_list(real_path)
-            fake_list = get_list(fake_path)
-
-        if max_sample is not None:
-            if (max_sample > len(real_list)) or (max_sample > len(fake_list)):
-                max_sample = 100
-                print("not enough images, max_sample falling to 100")
-            random.shuffle(real_list)
-            random.shuffle(fake_list)
-            real_list = real_list[0:max_sample]
-            fake_list = fake_list[0:max_sample]
-
-        assert len(real_list) == len(fake_list)
-
-        return real_list, fake_list
+        self.total_list = real_list + fake_list
 
     def __len__(self):
         return len(self.total_list)
 
     def __getitem__(self, idx):
-
         img_path = self.total_list[idx]
-
         label = self.labels_dict[img_path]
         img = Image.open(img_path).convert("RGB")
 
@@ -227,63 +328,104 @@ class RealFakeDataset(Dataset):
         return img, label
 
 
+# 修改 get_list 函数，支持直接指定文件列表
+def get_list(path, must_contain=''):
+    # 假设传入的是一个文件夹路径或图像文件的列表
+    if isinstance(path, str):
+        image_list = recursively_read(path, must_contain)
+    else:
+        image_list = path  # 如果是直接传入文件列表
+    return image_list
+
+
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--real_path', type=str, default=None, help='dir name or a pickle')
-    parser.add_argument('--fake_path', type=str, default=None, help='dir name or a pickle')
+    parser.add_argument('--real_path', type=str, default=None, help='Directory or list of real images')
+    parser.add_argument('--fake_path', type=str, default=None, help='Directory or list of fake images')
     parser.add_argument('--data_mode', type=str, default=None, help='wang2020 or ours')
-    parser.add_argument('--key', type=str, default='save', help='save the result')
-    parser.add_argument('--max_sample', type=int, default=1000,
-                        help='only check this number of images for both fake/real')
-
-    parser.add_argument('--arch', type=str, default='res50')
-    parser.add_argument('--ckpt', type=str, default='./pretrained_weights/fc_weights.pth')
-
-    parser.add_argument('--result_folder', type=str, default='result', help='')
+    parser.add_argument('--max_sample', type=int, default=1000, help='Max number of images to sample')
+    parser.add_argument('--jpeg_quality', type=int, default=None, help="JPEG quality for testing robustness")
+    parser.add_argument('--gaussian_sigma', type=int, default=None, help="Sigma for Gaussian blur")
     parser.add_argument('--batch_size', type=int, default=128)
 
-    parser.add_argument('--jpeg_quality', type=int, default=None,
-                        help="100, 90, 80, ... 30. Used to test robustness of our model. Not apply if None")
-    parser.add_argument('--gaussian_sigma', type=int, default=None,
-                        help="0,1,2,3,4.     Used to test robustness of our model. Not apply if None")
+    parser.add_argument('--arch', type=str, default='res50', help='Model architecture')
+    parser.add_argument('--ckpt', type=str, default='./pretrained_weights/fc_weights.pth',
+                        help='Pre-trained model checkpoint')
+
+    parser.add_argument('--result_folder', type=str, default='result', help='Folder to save results')
 
     opt = parser.parse_args()
 
+    # 创建结果文件夹
     if os.path.exists(opt.result_folder):
         shutil.rmtree(opt.result_folder)
     os.makedirs(opt.result_folder)
 
+    # 1. 加载模型架构
     model = get_model(opt.arch)
+
+    # 2. 加载模型权重
     state_dict = torch.load(opt.ckpt, map_location='cpu')
     model.fc.load_state_dict(state_dict)
     print("Model loaded..")
+
+    # 设置模型为评估模式
     model.eval()
     model.cuda()
 
-    if (opt.real_path == None) or (opt.fake_path == None) or (opt.data_mode == None):
-        dataset_paths = DATASET_PATHS
+    # 3. 获取真实和伪造图像的文件列表
+    if isinstance(opt.real_path, str):
+        real_list = get_list(opt.real_path)
     else:
-        dataset_paths = [dict(real_path=opt.real_path, fake_path=opt.fake_path, data_mode=opt.data_mode, key=opt.key)]
+        real_list = opt.real_path
 
-    for dataset_path in (dataset_paths):
-        set_seed()
+    if isinstance(opt.fake_path, str):
+        fake_list = get_list(opt.fake_path)
+    else:
+        fake_list = opt.fake_path
 
-        dataset = RealFakeDataset(dataset_path['real_path'],
-                                  dataset_path['fake_path'],
-                                  dataset_path['data_mode'],
-                                  opt.max_sample,
-                                  opt.arch,
-                                  jpeg_quality=opt.jpeg_quality,
-                                  gaussian_sigma=opt.gaussian_sigma,
-                                  )
+    # 4. 创建数据集
+    dataset = RealFakeDataset(real_list=real_list,
+                              fake_list=fake_list,
+                              data_mode=opt.data_mode,
+                              jpeg_quality=opt.jpeg_quality,
+                              gaussian_sigma=opt.gaussian_sigma)
 
-        loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=4)
-        ap, r_acc0, f_acc0, acc0, r_acc1, f_acc1, acc1, best_thres = validate(model, loader, find_thres=True)
+    # 5. 加载数据
+    loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=4)
 
-        with open(os.path.join(opt.result_folder, 'ap.txt'), 'a') as f:
-            f.write(dataset_path['key'] + ': ' + str(round(ap * 100, 2)) + '\n')
+    # 6. 执行推理
+    all_preds = []
+    all_labels = []
 
-        with open(os.path.join(opt.result_folder, 'acc0.txt'), 'a') as f:
-            f.write(dataset_path['key'] + ': ' + str(round(r_acc0 * 100, 2)) + '  ' + str(
-                round(f_acc0 * 100, 2)) + '  ' + str(round(acc0 * 100, 2)) + '\n')
+    with torch.no_grad():
+        for img, label in tqdm(loader):
+            img = img.cuda()
+            preds = model(img)  # 获取预测结果
+            all_preds.extend(preds.sigmoid().flatten().cpu().numpy())  # 转为CPU并保存预测结果
+            all_labels.extend(label.cpu().numpy())  # 保存真实标签
+
+    # 7. 评估结果
+    y_true = np.array(all_labels)
+    y_pred = np.array(all_preds)
+
+    # 计算评估指标，例如平均精度（AP）和准确度
+    ap = average_precision_score(y_true, y_pred)
+
+    # 根据 0.5 的阈值计算准确度
+    r_acc0, f_acc0, acc0 = calculate_acc(y_true, y_pred, 0.5)
+    best_thres = find_best_threshold(y_true, y_pred)
+    r_acc1, f_acc1, acc1 = calculate_acc(y_true, y_pred, best_thres)
+
+    # 8. 输出结果
+    with open(os.path.join(opt.result_folder, 'ap.txt'), 'a') as f:
+        f.write(str(round(ap * 100, 2)) + '\n')
+
+    with open(os.path.join(opt.result_folder, 'acc0.txt'), 'a') as f:
+        f.write(
+            str(round(r_acc0 * 100, 2)) + '  ' + str(round(f_acc0 * 100, 2)) + '  ' + str(round(acc0 * 100, 2)) + '\n')
+
+    with open(os.path.join(opt.result_folder, 'best_threshold.txt'), 'a') as f:
+        f.write(str(best_thres) + '\n')
+
+    print("Inference complete.")
