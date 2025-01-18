@@ -340,10 +340,7 @@ def get_list(path, must_contain=''):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--real_path', type=str, default=None, help='Directory or list of real images')
-    parser.add_argument('--fake_path', type=str, default=None, help='Directory or list of fake images')
-    parser.add_argument('--data_mode', type=str, default=None, help='wang2020 or ours')
-    parser.add_argument('--max_sample', type=int, default=1000, help='Max number of images to sample')
+    parser.add_argument('--image_folder', type=str, default=None, help='Folder containing mixed real and fake images')
     parser.add_argument('--jpeg_quality', type=int, default=None, help="JPEG quality for testing robustness")
     parser.add_argument('--gaussian_sigma', type=int, default=None, help="Sigma for Gaussian blur")
     parser.add_argument('--batch_size', type=int, default=128)
@@ -373,21 +370,13 @@ if __name__ == '__main__':
     model.eval()
     model.cuda()
 
-    # 3. 获取真实和伪造图像的文件列表
-    if isinstance(opt.real_path, str):
-        real_list = get_list(opt.real_path)
-    else:
-        real_list = opt.real_path
-
-    if isinstance(opt.fake_path, str):
-        fake_list = get_list(opt.fake_path)
-    else:
-        fake_list = opt.fake_path
+    # 3. 获取文件夹中所有图片路径
+    image_list = get_list(opt.image_folder)
 
     # 4. 创建数据集
-    dataset = RealFakeDataset(real_list=real_list,
-                              fake_list=fake_list,
-                              data_mode=opt.data_mode,
+    dataset = RealFakeDataset(real_list=image_list,
+                              fake_list=[],  # 不需要单独的fake_list，所有图片都在一个文件夹里
+                              data_mode="ours",  # 可以使用自己的数据模式
                               jpeg_quality=opt.jpeg_quality,
                               gaussian_sigma=opt.gaussian_sigma)
 
@@ -397,35 +386,42 @@ if __name__ == '__main__':
     # 6. 执行推理
     all_preds = []
     all_labels = []
+    all_image_paths = []
 
     with torch.no_grad():
-        for img, label in tqdm(loader):
+        for img, _ in tqdm(loader):
             img = img.cuda()
             preds = model(img)  # 获取预测结果
             all_preds.extend(preds.sigmoid().flatten().cpu().numpy())  # 转为CPU并保存预测结果
-            all_labels.extend(label.cpu().numpy())  # 保存真实标签
 
-    # 7. 评估结果
-    y_true = np.array(all_labels)
+            # 获取所有图片路径
+            image_paths_batch = dataset.total_list
+            all_image_paths.extend(image_paths_batch)
+
+    # 7. 处理推理结果并保存
     y_pred = np.array(all_preds)
 
-    # 计算评估指标，例如平均精度（AP）和准确度
-    ap = average_precision_score(y_true, y_pred)
+    # 创建两个文件夹保存分类结果
+    real_folder = os.path.join(opt.result_folder, 'real')
+    fake_folder = os.path.join(opt.result_folder, 'fake')
 
-    # 根据 0.5 的阈值计算准确度
-    r_acc0, f_acc0, acc0 = calculate_acc(y_true, y_pred, 0.5)
-    best_thres = find_best_threshold(y_true, y_pred)
-    r_acc1, f_acc1, acc1 = calculate_acc(y_true, y_pred, best_thres)
+    os.makedirs(real_folder, exist_ok=True)
+    os.makedirs(fake_folder, exist_ok=True)
 
-    # 8. 输出结果
-    with open(os.path.join(opt.result_folder, 'ap.txt'), 'a') as f:
-        f.write(str(round(ap * 100, 2)) + '\n')
+    # 按预测结果分类
+    for idx, pred in enumerate(y_pred):
+        image_path = all_image_paths[idx]
+        image_name = os.path.basename(image_path)
 
-    with open(os.path.join(opt.result_folder, 'acc0.txt'), 'a') as f:
-        f.write(
-            str(round(r_acc0 * 100, 2)) + '  ' + str(round(f_acc0 * 100, 2)) + '  ' + str(round(acc0 * 100, 2)) + '\n')
+        # 预测值大于0.5为fake
+        if pred >= 0.5:
+            shutil.copy(image_path, os.path.join(fake_folder, image_name))  # 复制到fake文件夹
+        else:
+            shutil.copy(image_path, os.path.join(real_folder, image_name))  # 复制到real文件夹
 
-    with open(os.path.join(opt.result_folder, 'best_threshold.txt'), 'a') as f:
-        f.write(str(best_thres) + '\n')
+        # 保存推理结果
+        with open(os.path.join(opt.result_folder, 'predictions.txt'), 'a') as f:
+            f.write(f"{image_name}: {'real' if pred < 0.5 else 'fake'} (confidence: {pred:.4f})\n")
 
     print("Inference complete.")
+
